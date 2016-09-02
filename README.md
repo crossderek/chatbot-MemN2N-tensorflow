@@ -39,16 +39,20 @@ These files are also a good example of usage.
 Unless specified, the Adam optimizer was used.
 
 The following params were used:
-  * epochs: 200
-  * learning_rate: 0.01
-  * epsilon: 1e-8
-  * embedding_size: 20
+* epochs: 200
+* learning_rate: 0.01
+* epsilon: 1e-8
+* embedding_size: 20
 
 
 Task  |  Training Accuracy  |  Validation Accuracy  |  Testing Accuracy	 |  Testing Accuracy(OOV)
 ------|---------------------|-----------------------|--------------------|-----------------------
 1     |  1.00	            |  1.00		            |  0.99				 |	0.83
 2     |  1.00               |  0.99		            |  1.00				 |	0.78
+3     |  0.95               |  0.73		            |  0.74				 |	0.74
+4     |  0.99               |  0.56		            |  0.57				 |	0.56
+5     |  0.85               |  0.82		            |  0.82				 |	0.61
+6     |  0.82               |  0.70		            |  0.62				 |	---
 
 ### Notes
 
