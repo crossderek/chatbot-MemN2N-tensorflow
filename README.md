@@ -48,10 +48,10 @@ A joint model was also run with the following params:
   * embedding_size: 40
 
 
-Task  |  Training Accuracy  |  Validation Accuracy  |  Testing Accuracy
-------|---------------------|-----------------------|------------------
-1     |  1.00               |  1.00                 |  1.00
-
+Task  |  Training Accuracy  |  Validation Accuracy  |  Testing Accuracy	 |  Testing Accuracy(OOV)
+------|---------------------|-----------------------|--------------------|-----------------------
+1     |  1.00	            |  1.00		            |  0.99				 |	0.83
+2     |  1.00               |  0.99		            |  1.00				 |	0.78
 
 ### Notes
 

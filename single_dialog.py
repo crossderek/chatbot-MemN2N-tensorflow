@@ -22,6 +22,9 @@ tf.flags.DEFINE_integer("memory_size", 50, "Maximum size of memory.")
 tf.flags.DEFINE_integer("task_id", 1, "bAbI task id, 1 <= id <= 20")
 tf.flags.DEFINE_integer("random_state", None, "Random state.")
 tf.flags.DEFINE_string("data_dir", "data/dialog-bAbI-tasks/", "Directory containing bAbI tasks")
+tf.flags.DEFINE_string("model_dir", "model/", "Directory containing memn2n model checkpoints")
+tf.flags.DEFINE_boolean('train', False, 'if True, begin to train')
+tf.flags.DEFINE_boolean('OOV', False, 'if True, use OOV test set')
 FLAGS = tf.flags.FLAGS
 
 print("Started Task:", FLAGS.task_id)
@@ -29,7 +32,7 @@ print("Started Task:", FLAGS.task_id)
 
 candidates,candid_dic = load_candidates(FLAGS.data_dir, FLAGS.task_id)
 # task data
-train, test, val = load_dialog_task(FLAGS.data_dir, FLAGS.task_id, candid_dic)
+train, test, val = load_dialog_task(FLAGS.data_dir, FLAGS.task_id, candid_dic, FLAGS.OOV)
 data = train + test + val
 
 vocab = reduce(lambda x, y: x | y, (set(list(chain.from_iterable(s)) + q) for s, q, a in data))
@@ -87,36 +90,51 @@ batches = [(start, end) for start, end in batches]
 with tf.Session() as sess:
     model = MemN2NDialog(batch_size, vocab_size, n_cand,sentence_size, memory_size, FLAGS.embedding_size, candidates_vec, session=sess,
                    hops=FLAGS.hops, max_grad_norm=FLAGS.max_grad_norm, optimizer=optimizer)
-    for t in range(1, FLAGS.epochs+1):
-        np.random.shuffle(batches)
-        total_cost = 0.0
-        for start, end in batches:
-            s = trainS[start:end]
-            q = trainQ[start:end]
-            a = trainA[start:end]
-            cost_t = model.batch_fit(s, q, a)
-            total_cost += cost_t
-
-        if t % FLAGS.evaluation_interval == 0:
-            train_preds = []
-            for start in range(0, n_train, batch_size):
-                end = start + batch_size
+    saver = tf.train.Saver(max_to_keep=50)
+    best_validation_accuracy=0
+    if FLAGS.train:
+        for t in range(1, FLAGS.epochs+1):
+            np.random.shuffle(batches)
+            total_cost = 0.0
+            for start, end in batches:
                 s = trainS[start:end]
                 q = trainQ[start:end]
-                pred = model.predict(s, q)
-                train_preds += list(pred)
+                a = trainA[start:end]
+                cost_t = model.batch_fit(s, q, a)
+                total_cost += cost_t
 
-            val_preds = model.predict(valS, valQ)
-            train_acc = metrics.accuracy_score(np.array(train_preds), train_labels)
-            val_acc = metrics.accuracy_score(val_preds, val_labels)
+            if t % FLAGS.evaluation_interval == 0:
+                train_preds = []
+                for start in range(0, n_train, batch_size):
+                    end = start + batch_size
+                    s = trainS[start:end]
+                    q = trainQ[start:end]
+                    pred = model.predict(s, q)
+                    train_preds += list(pred)
 
-            print('-----------------------')
-            print('Epoch', t)
-            print('Total Cost:', total_cost)
-            print('Training Accuracy:', train_acc)
-            print('Validation Accuracy:', val_acc)
-            print('-----------------------')
+                val_preds = model.predict(valS, valQ)
+                train_acc = metrics.accuracy_score(np.array(train_preds), train_labels)
+                val_acc = metrics.accuracy_score(val_preds, val_labels)
 
+                print('-----------------------')
+                print('Epoch', t)
+                print('Total Cost:', total_cost)
+                print('Training Accuracy:', train_acc)
+                print('Validation Accuracy:', val_acc)
+                print('-----------------------')
+                if val_acc>best_validation_accuracy:
+                    best_validation_accuracy=val_acc
+                    saver.save(sess,"task"+str(FLAGS.task_id)+"_"+FLAGS.model_dir+'model.ckpt',global_step=t)
+                else:
+                    print("early stopping")
+                    break
+    else:
+        ckpt = tf.train.get_checkpoint_state("task"+str(FLAGS.task_id)+"_"+FLAGS.model_dir)
+        if ckpt and ckpt.model_checkpoint_path:
+            saver.restore(sess, ckpt.model_checkpoint_path)
+        else:
+            print("...no checkpoint found...")
+        # saver.restore(sess,"task"+str(FLAGS.task_id)+"_"+FLAGS.model_dir+'model.ckpt')
     test_preds = model.predict(testS, testQ)
     test_acc = metrics.accuracy_score(test_preds, test_labels)
     print("Testing Accuracy:", test_acc)

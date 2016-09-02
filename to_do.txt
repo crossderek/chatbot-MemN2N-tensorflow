@@ -1,4 +1,5 @@
 to do:
-add time encoding and user/bot encoding
-check the implementation of logits
-add d*d matrix to the controller
+add early stopping according to val accuracy
+output both per response and per dialog accuracy
+add Matching and OOV words
+bootstrapping with word2vec or glove

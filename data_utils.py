@@ -9,13 +9,13 @@ def load_candidates(data_dir, task_id):
     candidates=[]
     with open(os.path.join(data_dir,'dialog-babi-candidates.txt')) as f:
         for line in f:
-            line=line.lower().strip().split(' ')[1:]
-            if line[0]=='api_call':
-                candidates.append(line)
+            line=tokenize(line.lower().strip())[1:]
+            # if line[0]=='api_call':
+            candidates.append(line)
     return candidates,dict((' '.join(cand),i) for i,cand in enumerate(candidates))
 
 
-def load_dialog_task(data_dir, task_id, candid_dic):
+def load_dialog_task(data_dir, task_id, candid_dic, isOOV):
     '''Load the nth task. There are 20 tasks in total.
 
     Returns a tuple containing the training and testing data for the task.
@@ -26,7 +26,10 @@ def load_dialog_task(data_dir, task_id, candid_dic):
     files = [os.path.join(data_dir, f) for f in files]
     s = 'dialog-babi-task{}-'.format(task_id)
     train_file = [f for f in files if s in f and 'trn' in f][0]
-    test_file = [f for f in files if s in f and 'tst.' in f][0]
+    if isOOV:
+        test_file = [f for f in files if s in f and 'tst-OOV' in f][0]
+    else: 
+        test_file = [f for f in files if s in f and 'tst.' in f][0]
     val_file = [f for f in files if s in f and 'dev' in f][0]
     train_data = get_dialogs(train_file,candid_dic)
     test_data = get_dialogs(test_file,candid_dic)
@@ -82,6 +85,39 @@ def parse_dialogs(lines,candid_dic):
             context=[]
     return data
 
+def parse_dialogs_per_response(lines,candid_dic):
+    '''
+        Parse dialogs provided in the babi tasks format
+    '''
+    data=[]
+    context=[]
+    u=None
+    r=None
+    for line in lines:
+        line=str.lower(line.strip())
+        if line:
+            nid, line = line.split(' ', 1)
+            nid = int(nid)
+            u, r = line.split('\t')
+            u = tokenize(u)
+            if u[-1] == '.' or u[-1] == '?':
+                u = u[:-1]
+            r = tokenize(r)
+            if r[-1] == '.' or r[-1] == '?':
+                r = r[:-1]
+            # temporal encoding, and utterance/response encoding
+            data.append((context,u,candid_dic[' '.join(r)]))
+            u.append('$u')
+            u.append('#'+str(nid))
+            r.append('$r')
+            r.append('#'+str(nid))
+            context.append(u)
+            context.append(r)
+        else:
+            # clear context
+            context=[]
+    return data
+
 
 
 def get_dialogs(f,candid_dic):
@@ -89,16 +125,13 @@ def get_dialogs(f,candid_dic):
     If max_length is supplied, any stories longer than max_length tokens will be discarded.
     '''
     with open(f) as f:
-        return parse_dialogs(f.readlines(),candid_dic)
+        return parse_dialogs_per_response(f.readlines(),candid_dic)
 
 def vectorize_candidates(candidates,word_idx):
-    # result=[]
     vec=np.zeros((len(candidates),len(word_idx)+1))
     for i,candidate in enumerate(candidates):
         for w in candidate:
             vec[i][word_idx[w]]=1
-        # result.append([word_idx[w] for w in candidate])
-    # return np.array(result)
     return vec
 
 def vectorize_data(data, word_idx, sentence_size, memory_size, candidates_size):
