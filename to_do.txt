@@ -1,0 +1,4 @@
+to do:
+add time encoding and user/bot encoding
+check the implementation of logits
+add d*d matrix to the controller
