@@ -44,12 +44,6 @@ The following params were used:
   * epsilon: 1e-8
   * embedding_size: 20
 
-A joint model was also run with the following params:
-  * epochs: 100
-  * learning_rate: 0.01
-  * epsilon: 1.0
-  * embedding_size: 40
-
 
 Task  |  Training Accuracy  |  Validation Accuracy  |  Testing Accuracy	 |  Testing Accuracy(OOV)
 ------|---------------------|-----------------------|--------------------|-----------------------
