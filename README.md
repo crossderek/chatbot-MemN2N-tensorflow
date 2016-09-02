@@ -22,6 +22,9 @@ python single_dialog.py
 
 Running a [single bAbI task](./single_dialog.py)
 
+```
+python single_dialog.py --train True --OOV False --task_id 3
+```
 
 These files are also a good example of usage.
 

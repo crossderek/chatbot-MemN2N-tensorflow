@@ -40,11 +40,14 @@ def load_dialog_task(data_dir, task_id, candid_dic, isOOV):
 def tokenize(sent):
     '''Return the tokens of a sentence including punctuation.
     >>> tokenize('Bob dropped the apple. Where is the apple?')
-    ['Bob', 'dropped', 'the', 'apple', '.', 'Where', 'is', 'the', 'apple', '?']
+    ['Bob', 'dropped', 'the', 'apple', '.', 'Where', 'is', 'the', 'apple']
     '''
     if sent=='<silence>':
         return [sent]
-    return [x.strip() for x in re.split('(\W+)?', sent) if x.strip()]
+    result=[x.strip() for x in re.split('(\W+)?', sent) if x.strip()]
+    if result[-1]=='.' or result[-1]=='?':
+        result=result[:-1]
+    return result
 
 
 def parse_dialogs(lines,candid_dic):
@@ -60,20 +63,22 @@ def parse_dialogs(lines,candid_dic):
         if line:
             nid, line = line.split(' ', 1)
             nid = int(nid)
-            u, r = line.split('\t')
-            u = tokenize(u)
-            if u[-1] == '.' or u[-1] == '?':
-                u = u[:-1]
-            r = tokenize(r)
-            if r[-1] == '.' or r[-1] == '?':
-                r = r[:-1]
-            # temporal encoding, and utterance/response encoding
-            u.append('$u')
-            u.append('#'+str(nid))
-            r.append('$r')
-            r.append('#'+str(nid))
-            context.append(u)
-            context.append(r)
+            if '\t' in line:
+                u, r = line.split('\t')
+                u = tokenize(u)
+                r = tokenize(r)
+                # temporal encoding, and utterance/response encoding
+                u.append('$u')
+                u.append('#'+str(nid))
+                r.append('$r')
+                r.append('#'+str(nid))
+                context.append(u)
+                context.append(r)
+            else:
+                r=tokenize(line)
+                r.append('$r')
+                r.append('#'+str(nid))
+                context.append(r)
         else:
             context=[x for x in context[:-2] if x]
             u=u[:-2]
@@ -98,21 +103,23 @@ def parse_dialogs_per_response(lines,candid_dic):
         if line:
             nid, line = line.split(' ', 1)
             nid = int(nid)
-            u, r = line.split('\t')
-            u = tokenize(u)
-            if u[-1] == '.' or u[-1] == '?':
-                u = u[:-1]
-            r = tokenize(r)
-            if r[-1] == '.' or r[-1] == '?':
-                r = r[:-1]
-            # temporal encoding, and utterance/response encoding
-            data.append((context,u,candid_dic[' '.join(r)]))
-            u.append('$u')
-            u.append('#'+str(nid))
-            r.append('$r')
-            r.append('#'+str(nid))
-            context.append(u)
-            context.append(r)
+            if '\t' in line:
+                u, r = line.split('\t')
+                u = tokenize(u)
+                r = tokenize(r)
+                # temporal encoding, and utterance/response encoding
+                data.append((context,u,candid_dic[' '.join(r)]))
+                u.append('$u')
+                u.append('#'+str(nid))
+                r.append('$r')
+                r.append('#'+str(nid))
+                context.append(u)
+                context.append(r)
+            else:
+                r=tokenize(line)
+                r.append('$r')
+                r.append('#'+str(nid))
+                context.append(r)
         else:
             # clear context
             context=[]
