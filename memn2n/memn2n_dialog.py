@@ -41,7 +41,7 @@ class MemN2NDialog(object):
         max_grad_norm=40.0,
         nonlin=None,
         initializer=tf.random_normal_initializer(stddev=0.1),
-        optimizer=tf.train.AdamOptimizer(learning_rate=1e-3),
+        optimizer=tf.train.AdamOptimizer(learning_rate=1e-2),
         session=tf.Session(),
         name='MemN2N'):
         """Creates an End-To-End Memory Network
@@ -55,11 +55,15 @@ class MemN2NDialog(object):
             sentence_size: The max size of a sentence in the data. All sentences should be padded
             to this length. If padding is required it should be done with nil one-hot encoding (0).
 
+            candidates_size: The size of candidates
+
             memory_size: The max size of the memory. Since Tensorflow currently does not support jagged arrays
             all memories must be padded to this length. If padding is required, the extra memories should be
             empty memories; memories filled with the nil word ([0, 0, 0, ......, 0]).
 
             embedding_size: The size of the word embedding.
+
+            candidates_vec: The numpy array of candidates encoding.
 
             hops: The number of hops. A hop consists of reading and addressing a memory slot.
             Defaults to `3`.
@@ -143,7 +147,6 @@ class MemN2NDialog(object):
         with tf.variable_scope(self._name):
             nil_word_slot = tf.zeros([1, self._embedding_size])
             A = tf.concat(0, [ nil_word_slot, self._init([self._vocab_size-1, self._embedding_size]) ])
-            B = tf.concat(0, [ nil_word_slot, self._init([self._vocab_size-1, self._embedding_size]) ])
             self.A = tf.Variable(A, name="A")
 
             self.H = tf.Variable(self._init([self._embedding_size, self._embedding_size]), name="H")
