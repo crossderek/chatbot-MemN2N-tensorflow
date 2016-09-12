@@ -1,16 +1,16 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
-from data_utils import load_dialog_task, vectorize_data, load_candidates, vectorize_candidates
+from data_utils import load_dialog_task, vectorize_data, load_candidates, vectorize_candidates, vectorize_candidates_sparse
 from sklearn import metrics
 from memn2n import MemN2NDialog
 from itertools import chain
 from six.moves import range, reduce
-
+import sys
 import tensorflow as tf
 import numpy as np
 
-tf.flags.DEFINE_float("learning_rate", 0.01, "Learning rate for Adam Optimizer.")
+tf.flags.DEFINE_float("learning_rate", 0.001, "Learning rate for Adam Optimizer.")
 tf.flags.DEFINE_float("epsilon", 1e-8, "Epsilon value for Adam Optimizer.")
 tf.flags.DEFINE_float("max_grad_norm", 40.0, "Clip gradients to this norm.")
 tf.flags.DEFINE_integer("evaluation_interval", 10, "Evaluate and print results every x epochs")
@@ -54,8 +54,8 @@ print("Longest story length", max_story_size)
 print("Average story length", mean_story_size)
 
 # train/validation/test sets
-candidates_vec=vectorize_candidates(candidates,word_idx)
-n_cand = candidates_vec.shape[0]
+candidates_vec=vectorize_candidates_sparse(candidates,word_idx)
+n_cand = len(candidates)
 print("Candidate Size", n_cand)
 
 trainS, trainQ, trainA = vectorize_data(train, word_idx, sentence_size, memory_size, n_cand)
@@ -63,7 +63,7 @@ testS, testQ, testA = vectorize_data(test, word_idx, sentence_size, memory_size,
 valS, valQ, valA = vectorize_data(val, word_idx, sentence_size, memory_size, n_cand)
 
 
-print(testS[0])
+# print(testS[0])
 
 print("Training set shape", trainS.shape)
 
@@ -76,9 +76,9 @@ print("Training Size", n_train)
 print("Validation Size", n_val)
 print("Testing Size", n_test)
 
-train_labels = np.argmax(trainA, axis=1)
-test_labels = np.argmax(testA, axis=1)
-val_labels = np.argmax(valA, axis=1)
+train_labels = trainA
+test_labels = testA
+val_labels = valA
 
 tf.set_random_seed(FLAGS.random_state)
 batch_size = FLAGS.batch_size
@@ -126,8 +126,9 @@ with tf.Session() as sess:
                     best_validation_accuracy=val_acc
                     saver.save(sess,"task"+str(FLAGS.task_id)+"_"+FLAGS.model_dir+'model.ckpt',global_step=t)
                 else:
-                    print("early stopping")
-                    break
+                    None
+                    # print("early stopping")
+                    # break
     else:
         ckpt = tf.train.get_checkpoint_state("task"+str(FLAGS.task_id)+"_"+FLAGS.model_dir)
         if ckpt and ckpt.model_checkpoint_path:

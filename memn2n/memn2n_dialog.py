@@ -95,15 +95,16 @@ class MemN2NDialog(object):
         self._init = initializer
         self._opt = optimizer
         self._name = name
-        self._candidates=tf.constant(candidates_vec,dtype=tf.float32)
+        self._candidates=candidates_vec
 
         self._build_inputs()
         self._build_vars()
 
         # cross entropy
         logits = self._inference(self._stories, self._queries) # (batch_size, vocab_size)
-        logits = tf.matmul(logits, tf.transpose(self._candidates))
-        cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits, tf.cast(self._answers, tf.float32), name="cross_entropy")
+        # logits = tf.matmul(logits, tf.transpose(self._candidates),b_is_sparse=True)
+        logits = tf.transpose(tf.sparse_tensor_dense_matmul(self._candidates,tf.transpose(logits)))
+        cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits, self._answers, name="cross_entropy")
         cross_entropy_sum = tf.reduce_sum(cross_entropy, name="cross_entropy_sum")
 
         # loss op
@@ -141,7 +142,7 @@ class MemN2NDialog(object):
     def _build_inputs(self):
         self._stories = tf.placeholder(tf.int32, [None, self._memory_size, self._sentence_size], name="stories")
         self._queries = tf.placeholder(tf.int32, [None, self._sentence_size], name="queries")
-        self._answers = tf.placeholder(tf.int32, [None, self._candidates_size], name="answers")
+        self._answers = tf.placeholder(tf.int32, [None], name="answers")
 
     def _build_vars(self):
         with tf.variable_scope(self._name):

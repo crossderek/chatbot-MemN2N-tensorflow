@@ -3,6 +3,7 @@ from __future__ import absolute_import
 import os
 import re
 import numpy as np
+import tensorflow as tf
 
 def load_candidates(data_dir, task_id):
     assert task_id > 0 and task_id < 7
@@ -114,7 +115,7 @@ def parse_dialogs_per_response(lines,candid_dic):
                 u = tokenize(u)
                 r = tokenize(r)
                 # temporal encoding, and utterance/response encoding
-                data.append((context,u,candid_dic[' '.join(r)]))
+                data.append((context[:],u[:],candid_dic[' '.join(r)]))
                 u.append('$u')
                 u.append('#'+str(nid))
                 r.append('$r')
@@ -145,7 +146,17 @@ def vectorize_candidates(candidates,word_idx):
     for i,candidate in enumerate(candidates):
         for w in candidate:
             vec[i][word_idx[w]]=1
-    return vec
+    return tf.constant(vec,dtype=tf.float32)
+
+def vectorize_candidates_sparse(candidates,word_idx):
+    shape=(len(candidates),len(word_idx)+1)
+    indices=[]
+    values=[]
+    for i,candidate in enumerate(candidates):
+        for w in candidate:
+            indices.append([i,word_idx[w]])
+            values.append(1.0)
+    return tf.SparseTensor(indices,values,shape)
 
 def vectorize_data(data, word_idx, sentence_size, memory_size, candidates_size):
     """
@@ -178,10 +189,7 @@ def vectorize_data(data, word_idx, sentence_size, memory_size, candidates_size):
         lq = max(0, sentence_size - len(query))
         q = [word_idx[w] for w in query] + [0] * lq
 
-        y = np.zeros(candidates_size)
-        y[answer]=1
-
         S.append(ss)
         Q.append(q)
-        A.append(y)
+        A.append(answer)
     return np.array(S), np.array(Q), np.array(A)
