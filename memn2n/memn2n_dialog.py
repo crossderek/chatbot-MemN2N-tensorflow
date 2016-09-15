@@ -149,7 +149,6 @@ class MemN2NDialog(object):
             nil_word_slot = tf.zeros([1, self._embedding_size])
             A = tf.concat(0, [ nil_word_slot, self._init([self._vocab_size-1, self._embedding_size]) ])
             self.A = tf.Variable(A, name="A")
-
             self.H = tf.Variable(self._init([self._embedding_size, self._embedding_size]), name="H")
             self.W = tf.Variable(self._init([self._embedding_size, self._vocab_size]), name="W")
         self._nil_vars = set([self.A.name])

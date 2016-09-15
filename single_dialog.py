@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
-from data_utils import load_dialog_task, vectorize_data, load_candidates, vectorize_candidates, vectorize_candidates_sparse
+from data_utils import load_dialog_task, vectorize_data, load_candidates, vectorize_candidates, vectorize_candidates_sparse, tokenize
 from sklearn import metrics
 from memn2n import MemN2NDialog
 from itertools import chain
@@ -24,98 +24,123 @@ tf.flags.DEFINE_integer("random_state", None, "Random state.")
 tf.flags.DEFINE_string("data_dir", "data/dialog-bAbI-tasks/", "Directory containing bAbI tasks")
 tf.flags.DEFINE_string("model_dir", "model/", "Directory containing memn2n model checkpoints")
 tf.flags.DEFINE_boolean('train', True, 'if True, begin to train')
+tf.flags.DEFINE_boolean('interactive', False, 'if True, interactive')
 tf.flags.DEFINE_boolean('OOV', False, 'if True, use OOV test set')
 FLAGS = tf.flags.FLAGS
-
 print("Started Task:", FLAGS.task_id)
 
+class chatBot(object):
+    def __init__(self,data_dir,model_dir,task_id,isTrain=False,isInteractive=True,OOV=False,memory_size=50,random_state=None,batch_size=32,learning_rate=0.001,epsilon=1e-8,max_grad_norm=40.0,evaluation_interval=10,hops=3,epochs=200,embedding_size=20):
+        self.data_dir=data_dir
+        self.model_dir=model_dir
+        self.task_id=task_id
+        self.isTrain=isTrain
+        self.isInteractive=isInteractive
+        self.OOV=OOV
+        self.memory_size=memory_size
+        self.random_state=random_state
+        self.batch_size=batch_size
+        self.learning_rate=learning_rate
+        self.epsilon=epsilon
+        self.max_grad_norm=max_grad_norm
+        self.evaluation_interval=evaluation_interval
+        self.hops=hops
+        self.epochs=epochs
+        self.embedding_size=embedding_size
 
-candidates,candid_dic = load_candidates(FLAGS.data_dir, FLAGS.task_id)
-# task data
-train, test, val = load_dialog_task(FLAGS.data_dir, FLAGS.task_id, candid_dic, FLAGS.OOV)
-data = train + test + val
+        candidates,self.candid2indx = load_candidates(self.data_dir, self.task_id)
+        self.n_cand = len(candidates)
+        print("Candidate Size", self.n_cand)
+        self.indx2candid= dict((self.candid2indx[key],key) for key in self.candid2indx)
+        # task data
+        self.trainData, self.testData, self.valData = load_dialog_task(self.data_dir, self.task_id, self.candid2indx, self.OOV)
+        data = self.trainData + self.testData + self.valData
+        self.build_vocab(data,candidates)
+        self.candidates_vec=vectorize_candidates_sparse(candidates,self.word_idx)
+    
+    def run(self):
+        optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, epsilon=self.epsilon)
+        with tf.Session() as self.sess:
+            self.model = MemN2NDialog(self.batch_size, self.vocab_size, self.n_cand, self.sentence_size, self.memory_size, self.embedding_size, self.candidates_vec, session=self.sess,
+                           hops=self.hops, max_grad_norm=self.max_grad_norm, optimizer=optimizer)
+            self.saver = tf.train.Saver(max_to_keep=50)
+            if self.isTrain:
+                self.train()
+            else:
+                self.test()
 
-vocab = reduce(lambda x, y: x | y, (set(list(chain.from_iterable(s)) + q) for s, q, a in data))
-vocab |= reduce(lambda x,y: x|y, (set(candidate) for candidate in candidates) )
-vocab=sorted(vocab)
-word_idx = dict((c, i + 1) for i, c in enumerate(vocab))
+    def build_vocab(self,data,candidates):
+        vocab = reduce(lambda x, y: x | y, (set(list(chain.from_iterable(s)) + q) for s, q, a in data))
+        vocab |= reduce(lambda x,y: x|y, (set(candidate) for candidate in candidates) )
+        vocab=sorted(vocab)
+        self.word_idx = dict((c, i + 1) for i, c in enumerate(vocab))
+        max_story_size = max(map(len, (s for s, _, _ in data)))
+        mean_story_size = int(np.mean([ len(s) for s, _, _ in data ]))
+        self.sentence_size = max(map(len, chain.from_iterable(s for s, _, _ in data)))
+        query_size = max(map(len, (q for _, q, _ in data)))
+        self.memory_size = min(self.memory_size, max_story_size)
+        self.vocab_size = len(self.word_idx) + 1 # +1 for nil word
+        self.sentence_size = max(query_size, self.sentence_size) # for the position
+        # params
+        print("vocab size:",self.vocab_size)
+        print("Longest sentence length", self.sentence_size)
+        print("Longest story length", max_story_size)
+        print("Average story length", mean_story_size)
 
-max_story_size = max(map(len, (s for s, _, _ in data)))
-mean_story_size = int(np.mean([ len(s) for s, _, _ in data ]))
-sentence_size = max(map(len, chain.from_iterable(s for s, _, _ in data)))
-query_size = max(map(len, (q for _, q, _ in data)))
-memory_size = min(FLAGS.memory_size, max_story_size)
-vocab_size = len(word_idx) + 1 # +1 for nil word
-sentence_size = max(query_size, sentence_size) # for the position
+    def interactive(self):
+        context=[]
+        u=None
+        r=None
+        nid=1
+        while True:
+            line=raw_input('--> ').strip().lower()
+            if line=='exit':
+                break
+            if line=='restart':
+                context=[]
+                nid=1
+                continue
+            u=tokenize(line)
+            data=[(context,u,-1)]
+            s,q,a=vectorize_data(data, self.word_idx, self.sentence_size, self.memory_size, self.n_cand)
+            preds=self.model.predict(s,q)
+            r=self.indx2candid[preds[0]]
+            print(r)
+            r=tokenize(r)
+            u.append('$u')
+            u.append('#'+str(nid))
+            r.append('$r')
+            r.append('#'+str(nid))
+            context.append(u)
+            context.append(r)
+            nid+=1
 
-print ("vocab size:",vocab_size)
-print("Longest sentence length", sentence_size)
-print("Longest story length", max_story_size)
-print("Average story length", mean_story_size)
-
-# train/validation/test sets
-candidates_vec=vectorize_candidates_sparse(candidates,word_idx)
-n_cand = len(candidates)
-print("Candidate Size", n_cand)
-
-trainS, trainQ, trainA = vectorize_data(train, word_idx, sentence_size, memory_size, n_cand)
-testS, testQ, testA = vectorize_data(test, word_idx, sentence_size, memory_size, n_cand)
-valS, valQ, valA = vectorize_data(val, word_idx, sentence_size, memory_size, n_cand)
-
-
-# print(testS[0])
-
-print("Training set shape", trainS.shape)
-
-# params
-n_train = trainS.shape[0]
-n_test = testS.shape[0]
-n_val = valS.shape[0]
-
-print("Training Size", n_train)
-print("Validation Size", n_val)
-print("Testing Size", n_test)
-
-train_labels = trainA
-test_labels = testA
-val_labels = valA
-
-tf.set_random_seed(FLAGS.random_state)
-batch_size = FLAGS.batch_size
-optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, epsilon=FLAGS.epsilon)
-
-batches = zip(range(0, n_train-batch_size, batch_size), range(batch_size, n_train, batch_size))
-batches = [(start, end) for start, end in batches]
-
-with tf.Session() as sess:
-    model = MemN2NDialog(batch_size, vocab_size, n_cand,sentence_size, memory_size, FLAGS.embedding_size, candidates_vec, session=sess,
-                   hops=FLAGS.hops, max_grad_norm=FLAGS.max_grad_norm, optimizer=optimizer)
-    saver = tf.train.Saver(max_to_keep=50)
-    best_validation_accuracy=0
-    if FLAGS.train:
-        for t in range(1, FLAGS.epochs+1):
+    def train(self):
+        trainS, trainQ, trainA = vectorize_data(self.trainData, self.word_idx, self.sentence_size, self.memory_size, self.n_cand)
+        valS, valQ, valA = vectorize_data(self.valData, self.word_idx, self.sentence_size, self.memory_size, self.n_cand)
+        n_train = trainS.shape[0]
+        n_val = valS.shape[0]
+        print("Training set shape", trainS.shape)
+        print("Training Size",n_train)
+        print("Validation Size", n_val)
+        tf.set_random_seed(self.random_state)
+        batches = zip(range(0, n_train-self.batch_size, self.batch_size), range(self.batch_size, n_train, self.batch_size))
+        batches = [(start, end) for start, end in batches]
+        best_validation_accuracy=0
+        for t in range(1, self.epochs+1):
             np.random.shuffle(batches)
             total_cost = 0.0
             for start, end in batches:
                 s = trainS[start:end]
                 q = trainQ[start:end]
                 a = trainA[start:end]
-                cost_t = model.batch_fit(s, q, a)
+                cost_t = self.model.batch_fit(s, q, a)
                 total_cost += cost_t
-
-            if t % FLAGS.evaluation_interval == 0:
-                train_preds = []
-                for start in range(0, n_train, batch_size):
-                    end = start + batch_size
-                    s = trainS[start:end]
-                    q = trainQ[start:end]
-                    pred = model.predict(s, q)
-                    train_preds += list(pred)
-
-                val_preds = model.predict(valS, valQ)
-                train_acc = metrics.accuracy_score(np.array(train_preds), train_labels)
-                val_acc = metrics.accuracy_score(val_preds, val_labels)
-
+            if t % self.evaluation_interval == 0:
+                train_preds=self.batch_predict(trainS,trainQ,n_train)
+                val_preds=self.batch_predict(valS,valQ,n_val)
+                train_acc = metrics.accuracy_score(np.array(train_preds), trainA)
+                val_acc = metrics.accuracy_score(val_preds, valA)
                 print('-----------------------')
                 print('Epoch', t)
                 print('Total Cost:', total_cost)
@@ -124,17 +149,34 @@ with tf.Session() as sess:
                 print('-----------------------')
                 if val_acc>best_validation_accuracy:
                     best_validation_accuracy=val_acc
-                    saver.save(sess,"task"+str(FLAGS.task_id)+"_"+FLAGS.model_dir+'model.ckpt',global_step=t)
-                else:
-                    None
-                    # print("early stopping")
-                    # break
-    else:
-        ckpt = tf.train.get_checkpoint_state("task"+str(FLAGS.task_id)+"_"+FLAGS.model_dir)
+                    self.saver.save(self.sess,"task"+str(self.task_id)+"_"+self.model_dir+'model.ckpt',global_step=t)
+
+    def test(self):
+        ckpt = tf.train.get_checkpoint_state("task"+str(self.task_id)+"_"+self.model_dir)
         if ckpt and ckpt.model_checkpoint_path:
-            saver.restore(sess, ckpt.model_checkpoint_path)
+            self.saver.restore(self.sess, ckpt.model_checkpoint_path)
         else:
             print("...no checkpoint found...")
-        test_preds = model.predict(testS, testQ)
-        test_acc = metrics.accuracy_score(test_preds, test_labels)
-        print("Testing Accuracy:", test_acc)
+        if self.isInteractive:
+            self.interactive()
+        else:
+            testS, testQ, testA = vectorize_data(self.testData, self.word_idx, self.sentence_size, self.memory_size, self.n_cand)
+            n_test = testS.shape[0]
+            print("Testing Size", n_test)
+            test_preds=self.batch_predict(testS,testQ,n_test)
+            test_acc = metrics.accuracy_score(test_preds, testA)
+            print("Testing Accuracy:", test_acc)
+
+    def batch_predict(self,S,Q,n):
+        preds=[]
+        for start in range(0, n, self.batch_size):
+            end = start + self.batch_size
+            s = S[start:end]
+            q = Q[start:end]
+            pred = self.model.predict(s, q)
+            preds += list(pred)
+        return preds
+
+if __name__ =='__main__':
+    chatbot=chatBot(FLAGS.data_dir,FLAGS.model_dir,FLAGS.task_id,OOV=FLAGS.OOV,isTrain=FLAGS.train,isInteractive=FLAGS.interactive)
+    chatbot.run()
