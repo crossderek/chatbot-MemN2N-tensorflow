@@ -9,6 +9,7 @@ from six.moves import range, reduce
 import sys
 import tensorflow as tf
 import numpy as np
+import os
 
 tf.flags.DEFINE_float("learning_rate", 0.001, "Learning rate for Adam Optimizer.")
 tf.flags.DEFINE_float("epsilon", 1e-8, "Epsilon value for Adam Optimizer.")
@@ -30,11 +31,11 @@ FLAGS = tf.flags.FLAGS
 print("Started Task:", FLAGS.task_id)
 
 class chatBot(object):
-    def __init__(self,data_dir,model_dir,task_id,isTrain=False,isInteractive=True,OOV=False,memory_size=50,random_state=None,batch_size=32,learning_rate=0.001,epsilon=1e-8,max_grad_norm=40.0,evaluation_interval=10,hops=3,epochs=200,embedding_size=20):
+    def __init__(self,data_dir,model_dir,task_id,isInteractive=True,OOV=False,memory_size=50,random_state=None,batch_size=32,learning_rate=0.001,epsilon=1e-8,max_grad_norm=40.0,evaluation_interval=10,hops=3,epochs=200,embedding_size=20):
         self.data_dir=data_dir
-        self.model_dir=model_dir
         self.task_id=task_id
-        self.isTrain=isTrain
+        self.model_dir=model_dir
+        # self.isTrain=isTrain
         self.isInteractive=isInteractive
         self.OOV=OOV
         self.memory_size=memory_size
@@ -57,17 +58,23 @@ class chatBot(object):
         data = self.trainData + self.testData + self.valData
         self.build_vocab(data,candidates)
         self.candidates_vec=vectorize_candidates_sparse(candidates,self.word_idx)
-    
-    def run(self):
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, epsilon=self.epsilon)
-        with tf.Session() as self.sess:
-            self.model = MemN2NDialog(self.batch_size, self.vocab_size, self.n_cand, self.sentence_size, self.memory_size, self.embedding_size, self.candidates_vec, session=self.sess,
+        self.sess=tf.Session()
+        self.model = MemN2NDialog(self.batch_size, self.vocab_size, self.n_cand, self.sentence_size, self.memory_size, self.embedding_size, self.candidates_vec, session=self.sess,
                            hops=self.hops, max_grad_norm=self.max_grad_norm, optimizer=optimizer)
-            self.saver = tf.train.Saver(max_to_keep=50)
-            if self.isTrain:
-                self.train()
-            else:
-                self.test()
+        self.saver = tf.train.Saver(max_to_keep=50)
+
+    
+    # def run(self):
+    #     optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, epsilon=self.epsilon)
+    #     with tf.Session() as self.sess:
+    #         self.model = MemN2NDialog(self.batch_size, self.vocab_size, self.n_cand, self.sentence_size, self.memory_size, self.embedding_size, self.candidates_vec, session=self.sess,
+    #                        hops=self.hops, max_grad_norm=self.max_grad_norm, optimizer=optimizer)
+    #         self.saver = tf.train.Saver(max_to_keep=50)
+    #         if self.isTrain:
+    #             self.train()
+    #         else:
+    #             self.test()
 
     def build_vocab(self,data,candidates):
         vocab = reduce(lambda x, y: x | y, (set(list(chain.from_iterable(s)) + q) for s, q, a in data))
@@ -99,6 +106,7 @@ class chatBot(object):
             if line=='restart':
                 context=[]
                 nid=1
+                print("clear memory")
                 continue
             u=tokenize(line)
             data=[(context,u,-1)]
@@ -149,10 +157,10 @@ class chatBot(object):
                 print('-----------------------')
                 if val_acc>best_validation_accuracy:
                     best_validation_accuracy=val_acc
-                    self.saver.save(self.sess,"task"+str(self.task_id)+"_"+self.model_dir+'model.ckpt',global_step=t)
+                    self.saver.save(self.sess,self.model_dir+'model.ckpt',global_step=t)
 
     def test(self):
-        ckpt = tf.train.get_checkpoint_state("task"+str(self.task_id)+"_"+self.model_dir)
+        ckpt = tf.train.get_checkpoint_state(self.model_dir)
         if ckpt and ckpt.model_checkpoint_path:
             self.saver.restore(self.sess, ckpt.model_checkpoint_path)
         else:
@@ -177,6 +185,17 @@ class chatBot(object):
             preds += list(pred)
         return preds
 
+    def close_session(self):
+        self.sess.close()
+
 if __name__ =='__main__':
-    chatbot=chatBot(FLAGS.data_dir,FLAGS.model_dir,FLAGS.task_id,OOV=FLAGS.OOV,isTrain=FLAGS.train,isInteractive=FLAGS.interactive)
-    chatbot.run()
+    model_dir="task"+str(FLAGS.task_id)+"_"+FLAGS.model_dir
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
+    chatbot=chatBot(FLAGS.data_dir,model_dir,FLAGS.task_id,OOV=FLAGS.OOV,isInteractive=FLAGS.interactive,batch_size=FLAGS.batch_size)
+    # chatbot.run()
+    if FLAGS.train:
+        chatbot.train()
+    else:
+        chatbot.test()
+    chatbot.close_session()

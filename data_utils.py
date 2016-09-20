@@ -56,7 +56,7 @@ def tokenize(sent):
     result=[x.strip() for x in re.split('(\W+)?', sent) if x.strip()]
     if not result:
         result=['<silence>']
-    if result[-1]=='.' or result[-1]=='?':
+    if result[-1]=='.' or result[-1]=='?' or result[-1]=='!':
         result=result[:-1]
     return result
 

@@ -20,10 +20,16 @@ python single_dialog.py
 
 ### Examples
 
-Running a [single bAbI task](./single_dialog.py)
+Train the model
 
 ```
-python single_dialog.py --train True --OOV False --task_id 3
+python single_dialog.py --train True --task_id 1 --interactive False
+```
+
+Running a [single bAbI task](./single_dialog.py) Demo
+
+```
+python single_dialog.py --train False --task_id 1 --interactive True
 ```
 
 These files are also a good example of usage.
@@ -33,6 +39,7 @@ These files are also a good example of usage.
 * tensorflow 0.8
 * scikit-learn 0.17.1
 * six 1.10.0
+* scipy
 
 ### Results
 

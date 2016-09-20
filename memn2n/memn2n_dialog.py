@@ -16,6 +16,7 @@ def zero_nil_slot(t, name=None):
         t = tf.convert_to_tensor(t, name="t")
         s = tf.shape(t)[1]
         z = tf.zeros(tf.pack([1, s]))
+        # z = tf.zeros([1, s])
         return tf.concat(0, [z, tf.slice(t, [1, 0], [-1, -1])], name=name)
 
 def add_gradient_noise(t, stddev=1e-3, name=None):
@@ -173,9 +174,10 @@ class MemN2NDialog(object):
                 o_k = tf.reduce_sum(c_temp * probs_temp, 2)
 
                 u_k = tf.matmul(u[-1], self.H) + o_k
+                # u_k=u[-1]+tf.matmul(o_k,self.H)
                 # nonlinearity
                 if self._nonlin:
-                    u_k = nonlin(u_k)
+                    u_k = self._nonlin(u_k)
 
                 u.append(u_k)
 
@@ -209,27 +211,27 @@ class MemN2NDialog(object):
         feed_dict = {self._stories: stories, self._queries: queries}
         return self._sess.run(self.predict_op, feed_dict=feed_dict)
 
-    def predict_proba(self, stories, queries):
-        """Predicts probabilities of answers.
+    # def predict_proba(self, stories, queries):
+    #     """Predicts probabilities of answers.
 
-        Args:
-            stories: Tensor (None, memory_size, sentence_size)
-            queries: Tensor (None, sentence_size)
+    #     Args:
+    #         stories: Tensor (None, memory_size, sentence_size)
+    #         queries: Tensor (None, sentence_size)
 
-        Returns:
-            answers: Tensor (None, vocab_size)
-        """
-        feed_dict = {self._stories: stories, self._queries: queries}
-        return self._sess.run(self.predict_proba_op, feed_dict=feed_dict)
+    #     Returns:
+    #         answers: Tensor (None, vocab_size)
+    #     """
+    #     feed_dict = {self._stories: stories, self._queries: queries}
+    #     return self._sess.run(self.predict_proba_op, feed_dict=feed_dict)
 
-    def predict_log_proba(self, stories, queries):
-        """Predicts log probabilities of answers.
+    # def predict_log_proba(self, stories, queries):
+    #     """Predicts log probabilities of answers.
 
-        Args:
-            stories: Tensor (None, memory_size, sentence_size)
-            queries: Tensor (None, sentence_size)
-        Returns:
-            answers: Tensor (None, vocab_size)
-        """
-        feed_dict = {self._stories: stories, self._queries: queries}
-        return self._sess.run(self.predict_log_proba_op, feed_dict=feed_dict)
+    #     Args:
+    #         stories: Tensor (None, memory_size, sentence_size)
+    #         queries: Tensor (None, sentence_size)
+    #     Returns:
+    #         answers: Tensor (None, vocab_size)
+    #     """
+    #     feed_dict = {self._stories: stories, self._queries: queries}
+    #     return self._sess.run(self.predict_log_proba_op, feed_dict=feed_dict)
