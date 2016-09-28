@@ -57,24 +57,14 @@ class chatBot(object):
         self.trainData, self.testData, self.valData = load_dialog_task(self.data_dir, self.task_id, self.candid2indx, self.OOV)
         data = self.trainData + self.testData + self.valData
         self.build_vocab(data,candidates)
-        self.candidates_vec=vectorize_candidates_sparse(candidates,self.word_idx)
+        # self.candidates_vec=vectorize_candidates_sparse(candidates,self.word_idx)
+        self.candidates_vec=vectorize_candidates(candidates,self.word_idx,self.candidate_sentence_size)
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, epsilon=self.epsilon)
         self.sess=tf.Session()
-        self.model = MemN2NDialog(self.batch_size, self.vocab_size, self.n_cand, self.sentence_size, self.memory_size, self.embedding_size, self.candidates_vec, session=self.sess,
+        self.model = MemN2NDialog(self.batch_size, self.vocab_size, self.n_cand, self.sentence_size, self.embedding_size, self.candidates_vec, session=self.sess,
                            hops=self.hops, max_grad_norm=self.max_grad_norm, optimizer=optimizer)
         self.saver = tf.train.Saver(max_to_keep=50)
 
-    
-    # def run(self):
-    #     optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, epsilon=self.epsilon)
-    #     with tf.Session() as self.sess:
-    #         self.model = MemN2NDialog(self.batch_size, self.vocab_size, self.n_cand, self.sentence_size, self.memory_size, self.embedding_size, self.candidates_vec, session=self.sess,
-    #                        hops=self.hops, max_grad_norm=self.max_grad_norm, optimizer=optimizer)
-    #         self.saver = tf.train.Saver(max_to_keep=50)
-    #         if self.isTrain:
-    #             self.train()
-    #         else:
-    #             self.test()
 
     def build_vocab(self,data,candidates):
         vocab = reduce(lambda x, y: x | y, (set(list(chain.from_iterable(s)) + q) for s, q, a in data))
@@ -84,6 +74,7 @@ class chatBot(object):
         max_story_size = max(map(len, (s for s, _, _ in data)))
         mean_story_size = int(np.mean([ len(s) for s, _, _ in data ]))
         self.sentence_size = max(map(len, chain.from_iterable(s for s, _, _ in data)))
+        self.candidate_sentence_size=max(map(len,candidates))
         query_size = max(map(len, (q for _, q, _ in data)))
         self.memory_size = min(self.memory_size, max_story_size)
         self.vocab_size = len(self.word_idx) + 1 # +1 for nil word
@@ -91,6 +82,7 @@ class chatBot(object):
         # params
         print("vocab size:",self.vocab_size)
         print("Longest sentence length", self.sentence_size)
+        print("Longest candidate sentence length", self.candidate_sentence_size)
         print("Longest story length", max_story_size)
         print("Average story length", mean_story_size)
 
@@ -110,7 +102,7 @@ class chatBot(object):
                 continue
             u=tokenize(line)
             data=[(context,u,-1)]
-            s,q,a=vectorize_data(data, self.word_idx, self.sentence_size, self.memory_size, self.n_cand)
+            s,q,a=vectorize_data(data, self.word_idx, self.sentence_size, self.batch_size, self.n_cand, self.memory_size)
             preds=self.model.predict(s,q)
             r=self.indx2candid[preds[0]]
             print(r)
@@ -124,11 +116,10 @@ class chatBot(object):
             nid+=1
 
     def train(self):
-        trainS, trainQ, trainA = vectorize_data(self.trainData, self.word_idx, self.sentence_size, self.memory_size, self.n_cand)
-        valS, valQ, valA = vectorize_data(self.valData, self.word_idx, self.sentence_size, self.memory_size, self.n_cand)
-        n_train = trainS.shape[0]
-        n_val = valS.shape[0]
-        print("Training set shape", trainS.shape)
+        trainS, trainQ, trainA = vectorize_data(self.trainData, self.word_idx, self.sentence_size, self.batch_size, self.n_cand, self.memory_size)
+        valS, valQ, valA = vectorize_data(self.valData, self.word_idx, self.sentence_size, self.batch_size, self.n_cand, self.memory_size)
+        n_train = len(trainS)
+        n_val = len(valS)
         print("Training Size",n_train)
         print("Validation Size", n_val)
         tf.set_random_seed(self.random_state)
@@ -168,8 +159,8 @@ class chatBot(object):
         if self.isInteractive:
             self.interactive()
         else:
-            testS, testQ, testA = vectorize_data(self.testData, self.word_idx, self.sentence_size, self.memory_size, self.n_cand)
-            n_test = testS.shape[0]
+            testS, testQ, testA = vectorize_data(self.testData, self.word_idx, self.sentence_size, self.batch_size, self.n_cand, self.memory_size)
+            n_test = len(testS)
             print("Testing Size", n_test)
             test_preds=self.batch_predict(testS,testQ,n_test)
             test_acc = metrics.accuracy_score(test_preds, testA)

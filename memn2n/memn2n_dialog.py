@@ -36,7 +36,7 @@ def add_gradient_noise(t, stddev=1e-3, name=None):
 
 class MemN2NDialog(object):
     """End-To-End Memory Network."""
-    def __init__(self, batch_size, vocab_size, candidates_size, sentence_size, memory_size, embedding_size,
+    def __init__(self, batch_size, vocab_size, candidates_size, sentence_size, embedding_size,
         candidates_vec,
         hops=3,
         max_grad_norm=40.0,
@@ -88,7 +88,6 @@ class MemN2NDialog(object):
         self._vocab_size = vocab_size
         self._candidates_size = candidates_size
         self._sentence_size = sentence_size
-        self._memory_size = memory_size
         self._embedding_size = embedding_size
         self._hops = hops
         self._max_grad_norm = max_grad_norm
@@ -101,10 +100,9 @@ class MemN2NDialog(object):
         self._build_inputs()
         self._build_vars()
 
+        
         # cross entropy
-        logits = self._inference(self._stories, self._queries) # (batch_size, vocab_size)
-        # logits = tf.matmul(logits, tf.transpose(self._candidates),b_is_sparse=True)
-        logits = tf.transpose(tf.sparse_tensor_dense_matmul(self._candidates,tf.transpose(logits)))
+        logits = self._inference(self._stories, self._queries) # (batch_size, candidates_size)
         cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits, self._answers, name="cross_entropy")
         cross_entropy_sum = tf.reduce_sum(cross_entropy, name="cross_entropy_sum")
 
@@ -141,7 +139,7 @@ class MemN2NDialog(object):
 
 
     def _build_inputs(self):
-        self._stories = tf.placeholder(tf.int32, [None, self._memory_size, self._sentence_size], name="stories")
+        self._stories = tf.placeholder(tf.int32, [None, None, self._sentence_size], name="stories")
         self._queries = tf.placeholder(tf.int32, [None, self._sentence_size], name="queries")
         self._answers = tf.placeholder(tf.int32, [None], name="answers")
 
@@ -151,8 +149,10 @@ class MemN2NDialog(object):
             A = tf.concat(0, [ nil_word_slot, self._init([self._vocab_size-1, self._embedding_size]) ])
             self.A = tf.Variable(A, name="A")
             self.H = tf.Variable(self._init([self._embedding_size, self._embedding_size]), name="H")
-            self.W = tf.Variable(self._init([self._embedding_size, self._vocab_size]), name="W")
-        self._nil_vars = set([self.A.name])
+            W = tf.concat(0, [ nil_word_slot, self._init([self._vocab_size-1, self._embedding_size]) ])
+            self.W = tf.Variable(W, name="W")
+            # self.W = tf.Variable(self._init([self._vocab_size, self._embedding_size]), name="W")
+        self._nil_vars = set([self.A.name,self.W.name])
 
     def _inference(self, stories, queries):
         with tf.variable_scope(self._name):
@@ -180,8 +180,11 @@ class MemN2NDialog(object):
                     u_k = self._nonlin(u_k)
 
                 u.append(u_k)
-
-            return tf.matmul(u_k, self.W)
+            candidates_emb=tf.nn.embedding_lookup(self.W, self._candidates)
+            candidates_emb_sum=tf.reduce_sum(candidates_emb,1)
+            return tf.matmul(u_k,tf.transpose(candidates_emb_sum))
+            # logits=tf.matmul(u_k, self.W)
+            # return tf.transpose(tf.sparse_tensor_dense_matmul(self._candidates,tf.transpose(logits)))
 
     def batch_fit(self, stories, queries, answers):
         """Runs the training algorithm over the passed batch
@@ -210,28 +213,3 @@ class MemN2NDialog(object):
         """
         feed_dict = {self._stories: stories, self._queries: queries}
         return self._sess.run(self.predict_op, feed_dict=feed_dict)
-
-    # def predict_proba(self, stories, queries):
-    #     """Predicts probabilities of answers.
-
-    #     Args:
-    #         stories: Tensor (None, memory_size, sentence_size)
-    #         queries: Tensor (None, sentence_size)
-
-    #     Returns:
-    #         answers: Tensor (None, vocab_size)
-    #     """
-    #     feed_dict = {self._stories: stories, self._queries: queries}
-    #     return self._sess.run(self.predict_proba_op, feed_dict=feed_dict)
-
-    # def predict_log_proba(self, stories, queries):
-    #     """Predicts log probabilities of answers.
-
-    #     Args:
-    #         stories: Tensor (None, memory_size, sentence_size)
-    #         queries: Tensor (None, sentence_size)
-    #     Returns:
-    #         answers: Tensor (None, vocab_size)
-    #     """
-    #     feed_dict = {self._stories: stories, self._queries: queries}
-    #     return self._sess.run(self.predict_log_proba_op, feed_dict=feed_dict)

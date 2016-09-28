@@ -4,7 +4,7 @@ import os
 import re
 import numpy as np
 import tensorflow as tf
-
+stop_words=set(["a","an","the"])
 def load_candidates(data_dir, task_id):
     assert task_id > 0 and task_id < 7
     candidates=[]
@@ -53,7 +53,7 @@ def tokenize(sent):
     sent=sent.lower()
     if sent=='<silence>':
         return [sent]
-    result=[x.strip() for x in re.split('(\W+)?', sent) if x.strip()]
+    result=[x.strip() for x in re.split('(\W+)?', sent) if x.strip() and x.strip() not in stop_words]
     if not result:
         result=['<silence>']
     if result[-1]=='.' or result[-1]=='?' or result[-1]=='!':
@@ -147,13 +147,6 @@ def get_dialogs(f,candid_dic):
     with open(f) as f:
         return parse_dialogs_per_response(f.readlines(),candid_dic)
 
-def vectorize_candidates(candidates,word_idx):
-    vec=np.zeros((len(candidates),len(word_idx)+1))
-    for i,candidate in enumerate(candidates):
-        for w in candidate:
-            vec[i][word_idx[w]]=1
-    return tf.constant(vec,dtype=tf.float32)
-
 def vectorize_candidates_sparse(candidates,word_idx):
     shape=(len(candidates),len(word_idx)+1)
     indices=[]
@@ -164,7 +157,16 @@ def vectorize_candidates_sparse(candidates,word_idx):
             values.append(1.0)
     return tf.SparseTensor(indices,values,shape)
 
-def vectorize_data(data, word_idx, sentence_size, memory_size, candidates_size):
+def vectorize_candidates(candidates,word_idx,sentence_size):
+    shape=(len(candidates),sentence_size)
+    C=[]
+    for i,candidate in enumerate(candidates):
+        lc=max(0,sentence_size-len(candidate))
+        C.append([word_idx[w] if w in word_idx else 0 for w in candidate] + [0] * lc)
+    return tf.constant(C,shape=shape)
+
+
+def vectorize_data(data, word_idx, sentence_size, batch_size, candidates_size, max_memory_size):
     """
     Vectorize stories and queries.
 
@@ -178,7 +180,10 @@ def vectorize_data(data, word_idx, sentence_size, memory_size, candidates_size):
     S = []
     Q = []
     A = []
-    for story, query, answer in data:
+    data.sort(key=lambda x:len(x[0]),reverse=True)
+    for i, (story, query, answer) in enumerate(data):
+        if i%batch_size==0:
+            memory_size=max(1,min(max_memory_size,len(story)))
         ss = []
         for i, sentence in enumerate(story, 1):
             ls = max(0, sentence_size - len(sentence))
@@ -195,7 +200,7 @@ def vectorize_data(data, word_idx, sentence_size, memory_size, candidates_size):
         lq = max(0, sentence_size - len(query))
         q = [word_idx[w] if w in word_idx else 0 for w in query] + [0] * lq
 
-        S.append(ss)
-        Q.append(q)
-        A.append(answer)
-    return np.array(S), np.array(Q), np.array(A)
+        S.append(np.array(ss))
+        Q.append(np.array(q))
+        A.append(np.array(answer))
+    return S, Q, A
