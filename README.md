@@ -1,4 +1,4 @@
-# MemN2N
+# MemN2N Chatbot in Tensorflow
 
 Implementation of [Learning End-to-End Goal-Oriented Dialog](https://arxiv.org/abs/1605.07683) with sklearn-like interface using Tensorflow. Tasks are from the [bAbl](https://research.facebook.com/research/babi/) dataset.
 
